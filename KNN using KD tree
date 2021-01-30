@@ -1,0 +1,108 @@
+%matplotlib inline
+
+import numpy
+from scipy.spatial import cKDTree as KDTree
+
+import matplotlib.pyplot as plt
+
+class KNN:
+    """Quick and dirty k nearest neighbour implementation."""
+    
+    def __init__(self, x, y, k = 1):
+        """x is a data matrix, indexed [exemplar, feature],
+        y is the class for each data point, indexed [exemplar], as an integer in [0, max classes-1],
+        k is how many neighbours to consider."""
+        self._tree = KDTree(x)
+        self._y = y
+        self._k = k
+    
+    
+    def predict(self, x):
+        """Given x, which can be a single feature vector indexed [feature]
+        or a data matrix indexed [exemplar, feature]. Returns either the
+        index of a class or a vector of class indices, depending on which."""
+        # Convert to data matrix if required...
+        x = numpy.asarray(x)
+        
+        if len(x.shape)==1:
+            individual = True
+            x = x[None,:]
+            
+        else:
+            individual = False
+        
+        # Query nearest point indices...
+        _, indices = self._tree.query(x, self._k)
+        
+        # Hold a vote for which class...
+        if self._k==1:
+            ret = self._y[indices]
+        
+        else:
+            ret = numpy.zeros(x.shape[0], dtype=int)
+            for i in range(x.shape[0]): # This is really inefficient!
+                unique, unique_counts = numpy.unique(self._y[indices[i,:]], return_counts=True)
+                best = numpy.argmax(unique_counts)
+                ret[i] = unique[best]
+        
+        # Return, converting back to an individual value if needed...
+        return ret[0] if individual else ret        
+
+#------------------------------------------------------------------------------------------------------
+numpy.random.seed(0)
+
+data_x = numpy.random.rand(1024, 2)
+data_y = (data_x[:,0] < 0.5).astype(int) # True function we're trying to learn!
+data_x += 0.1 * (numpy.random.rand(1024, 2) - 0.5) # Bit of noise so they overlap
+
+train_x = data_x[:256,:]
+train_y = data_y[:256]
+
+val_x = data_x[256:512,:]
+val_y = data_y[256:512]
+
+test_x = data_x[512:,:]
+test_y = data_y[512:]
+
+#------------------------------------------------------------------------------------------------------
+def accuracy(model, x, y):
+    """Calculates and returns the accuracy of the given model with
+    the given data set, returning it as a percentage."""
+    pred_y = model.predict(x)
+    return 100 * (pred_y==y).sum() / y.shape[0]
+
+# Quick test...
+model = KNN(train_x, train_y, 1)
+percentage = accuracy(model, test_x, test_y)
+print('Accuracy is {:.1f}%'.format(percentage))
+#------------------------------------------------------------------------------------------------------
+# Train models for k from 1 to 6 (inclusive)...
+ks = list(range(1, 7))
+models = [KNN(train_x, train_y, k) for k in ks]
+
+# Calculate accuracies for all...
+train_acc = [accuracy(model, train_x, train_y) for model in models]
+val_acc = [accuracy(model, val_x, val_y) for model in models]
+test_acc = [accuracy(model, test_x, test_y) for model in models]
+#-------------------------------------------------------------------------------------------------------
+plt.figure(figsize=[16,4])
+
+plt.subplot(131)
+plt.title('train')
+plt.xlabel('k')
+plt.ylabel('accuracy')
+plt.plot(ks, train_acc)
+
+plt.subplot(132)
+plt.title('validation')
+plt.xlabel('k')
+plt.ylabel('accuracy')
+plt.plot(ks, val_acc)
+
+plt.subplot(133)
+plt.title('test')
+plt.xlabel('k')
+plt.ylabel('accuracy')
+plt.plot(ks, test_acc)
+
+plt.show()
